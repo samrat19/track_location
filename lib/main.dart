@@ -54,7 +54,6 @@ class _MapScreenState extends State<MapScreen> {
 
     this.setState(() {
         _polyLines[id] = polyline;
-        _polylineCount++;
       },
     );
   }
