@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_map_polyline/google_map_polyline.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:location/location.dart';
 
@@ -24,36 +24,69 @@ class _MapScreenState extends State<MapScreen> {
   Circle circle;
   StreamSubscription _locationSubscription;
 
+  int _polylineCount = 1;
+  Map<PolylineId, Polyline> _polyLines = <PolylineId, Polyline>{};
+  GoogleMapPolyline _googleMapPolyline =
+      GoogleMapPolyline(apiKey: "YOUR-API-KEY");
+  LatLng _mapInitLocation = LatLng(22.5757505, 88.4286015);
+
+  LatLng _originLocation = LatLng(22.5757505, 88.4286015);
+  LatLng _destinationLocation = LatLng(22.5858591, 88.4214645);
+
+  _getPolyLinesWithLocation(LocationData locationData) async {
+    List<LatLng> _coordinates =
+        await _googleMapPolyline.getCoordinatesWithLocation(
+      origin: LatLng(locationData.latitude,locationData.longitude),
+      destination: _destinationLocation,
+      mode: RouteMode.driving,
+    );
+    _addPolyline(_coordinates);
+  }
+
+  _addPolyline(List<LatLng> _coordinates) {
+    PolylineId id = PolylineId("poly$_polylineCount");
+    Polyline polyline = Polyline(
+      polylineId: id,
+      color: Colors.blueAccent,
+      points: _coordinates,
+      width: 10,
+    );
+
+    this.setState(() {
+        _polyLines[id] = polyline;
+        _polylineCount++;
+      },
+    );
+  }
+
   Future<Uint8List> getMarker() async {
     ByteData byteData =
         await DefaultAssetBundle.of(context).load('assets/car_icon.png');
     return byteData.buffer.asUint8List();
   }
 
-  static final CameraPosition initialLocation = CameraPosition(
-    target: LatLng(22.572645, 88.363892),
-    zoom: 14.47,
-  );
 
-  void updateMarkerAndCircle(LocationData newLocalData, Uint8List imageData) {
-    LatLng latlng = LatLng(newLocalData.latitude, newLocalData.longitude);
+  void updateMarker(LocationData newLocalData, Uint8List imageData) {
+    LatLng latLang = LatLng(newLocalData.latitude, newLocalData.longitude);
     this.setState(() {
       marker = Marker(
-          markerId: MarkerId("home"),
-          position: latlng,
-          rotation: newLocalData.heading,
-          draggable: false,
-          zIndex: 2,
-          flat: true,
-          anchor: Offset(0.5, 0.5),
-          icon: BitmapDescriptor.fromBytes(imageData));
-      circle = Circle(
-          circleId: CircleId("car"),
-          radius: newLocalData.accuracy,
-          zIndex: 1,
-          strokeColor: Colors.blue,
-          center: latlng,
-          fillColor: Colors.blue.withAlpha(70));
+        markerId: MarkerId("home"),
+        position: latLang,
+        rotation: newLocalData.heading,
+        draggable: false,
+        zIndex: 2,
+        flat: true,
+        anchor: Offset(0.5, 0.5),
+        icon: BitmapDescriptor.fromBytes(imageData),
+      );
+//      circle = Circle(
+//        circleId: CircleId("car"),
+//        radius: newLocalData.accuracy,
+//        zIndex: 1,
+//        strokeColor: Colors.blue,
+//        center: latlng,
+//        fillColor: Colors.blue.withAlpha(70),
+//      );
     });
   }
 
@@ -62,7 +95,7 @@ class _MapScreenState extends State<MapScreen> {
       Uint8List imageData = await getMarker();
       var location = await _locationTracker.getLocation();
 
-      updateMarkerAndCircle(location, imageData);
+      updateMarker(location, imageData);
 
       if (_locationSubscription != null) {
         _locationSubscription.cancel();
@@ -80,7 +113,8 @@ class _MapScreenState extends State<MapScreen> {
                   zoom: 18.00),
             ),
           );
-          updateMarkerAndCircle(newLocalData, imageData);
+          _getPolyLinesWithLocation(newLocalData);
+          updateMarker(newLocalData, imageData);
         }
       });
     } on PlatformException catch (e) {
@@ -89,6 +123,13 @@ class _MapScreenState extends State<MapScreen> {
       }
     }
   }
+
+  _onMapCreated(GoogleMapController controller) {
+    setState(() {
+      _googleMapController = controller;
+    });
+  }
+
 
   @override
   void dispose() {
@@ -104,12 +145,14 @@ class _MapScreenState extends State<MapScreen> {
       ),
       body: GoogleMap(
         mapType: MapType.hybrid,
-        initialCameraPosition: initialLocation,
+        polylines: Set<Polyline>.of(_polyLines.values),
+        initialCameraPosition: CameraPosition(
+          target: _mapInitLocation,
+          zoom: 14.47,
+        ),
         markers: Set.of((marker != null) ? [marker] : []),
-        circles: Set.of((circle != null) ? [circle] : []),
-        onMapCreated: (GoogleMapController controller) {
-          _googleMapController = controller;
-        },
+     //   circles: Set.of((circle != null) ? [circle] : []),
+        onMapCreated: _onMapCreated,
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
